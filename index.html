@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>АРХИВ: УТЕЧКА ДАННЫХ</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+    margin:0;
+    background:#071014;
+    color:#d9ffff;
+    font-family:Consolas,monospace;
+    min-height:100vh;
+}
+body:before{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    opacity:.08;
+    background:repeating-linear-gradient(
+        0deg,transparent 0 3px,#72ffff 4px
+    );
+}
+.wrap{max-width:1200px;margin:auto;padding:25px}
+h1{color:#55ffff;letter-spacing:4px;text-align:center}
+.subtitle{text-align:center;color:#77999d}
+.panel{
+    background:#0d1c21;
+    border:1px solid #24545b;
+    border-radius:12px;
+    padding:18px;
+    margin:15px 0;
+    box-shadow:0 0 25px #00191d;
+}
+.players{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+}
+.player{
+    border:2px solid #24545b;
+    padding:15px;
+    border-radius:10px;
+    text-align:center;
+    transition:.3s;
+}
+.player.active{
+    border-color:#55ffff;
+    box-shadow:0 0 20px #21caca;
+}
+.player.out{opacity:.3;filter:grayscale(1)}
+.name{font-size:18px;color:#fff;margin-bottom:12px}
+.stat{display:flex;justify-content:space-between;margin:6px 0}
+.number{color:#ffe36e;font-size:22px}
+.timer{
+    text-align:center;
+    font-size:64px;
+    color:#55ffff;
+    letter-spacing:5px;
+}
+.timer.warning{color:#ff5555}
+.message{
+    min-height:90px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    text-align:center;
+    font-size:28px;
+    color:#55ffff;
+}
+.message.win{color:#65ff91;font-size:46px}
+.message.lose{color:#ff5555}
+.log{
+    max-height:180px;
+    overflow:auto;
+    color:#95b9bd;
+    font-size:14px;
+}
+input,select,button{
+    font:inherit;
+    border-radius:7px;
+    padding:10px;
+}
+input,select{
+    background:#071014;
+    color:#fff;
+    border:1px solid #37747b;
+}
+button{
+    background:#17464d;
+    color:#d9ffff;
+    border:1px solid #55ffff;
+    cursor:pointer;
+    margin:4px;
+}
+button:hover{background:#236b73}
+.grid-buttons{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+}
+.secret{
+    border-color:#8e5d27;
+    color:#ffe36e;
+}
+.hidden{display:none!important}
+@media(max-width:700px){
+    .players{grid-template-columns:repeat(2,1fr)}
+    .grid-buttons{grid-template-columns:repeat(2,1fr)}
+    .timer{font-size:42px}
+}
+</style>
+</head>
+
+<body>
+<div class="wrap">
+    <h1>АРХИВ: УТЕЧКА ДАННЫХ</h1>
+    <div class="subtitle">СПЕЦИАЛЬНЫЙ ОТДЕЛ РАССЛЕДОВАНИЙ</div>
+
+    <section class="panel">
+        <div id="message" class="message">
+            СИСТЕМА ГОТОВА К ЗАПУСКУ
+        </div>
+    </section>
+
+    <section class="panel">
+        <div id="timer" class="timer">00:00</div>
+    </section>
+
+    <section class="panel">
+        <div id="players" class="players"></div>
+    </section>
+
+    <section class="panel">
+        <h3>ЖУРНАЛ СОБЫТИЙ</h3>
+        <div id="log" class="log"></div>
+    </section>
+
+    <!-- ПАНЕЛЬ ТОЛЬКО ВЕДУЩЕГО -->
+    <section id="adminPanel" class="panel hidden">
+        <h2>ПАНЕЛЬ ВЕДУЩЕГО</h2>
+
+        <button onclick="newGame()">НОВАЯ ИГРА</button>
+        <button onclick="startTimer()">СТАРТ</button>
+        <button onclick="stopTimer()">СТОП</button>
+        <button onclick="setTurnPrompt()">СМЕНИТЬ ХОД</button>
+
+        <h3>Быстрые команды</h3>
+
+        <input id="command" placeholder="Например: Д2 У+1 или ХД3">
+        <button onclick="runCommand()">ВЫПОЛНИТЬ</button>
+
+        <div class="grid-buttons">
+            <button onclick="quick('D1','clues',1)">Д1 У+1</button>
+            <button onclick="quick('D2','clues',1)">Д2 У+1</button>
+            <button onclick="quick('D3','clues',1)">Д3 У+1</button>
+            <button onclick="quick('D4','clues',1)">Д4 У+1</button>
+
+            <button onclick="quick('D1','suspects',1)">Д1 П+1</button>
+            <button onclick="quick('D2','suspects',1)">Д2 П+1</button>
+            <button onclick="quick('D3','suspects',1)">Д3 П+1</button>
+            <button onclick="quick('D4','suspects',1)">Д4 П+1</button>
+
+            <button onclick="quick('D1','alibi',1)">Д1 А+1</button>
+            <button onclick="quick('D2','alibi',1)">Д2 А+1</button>
+            <button onclick="quick('D3','alibi',1)">Д3 А+1</button>
+            <button onclick="quick('D4','alibi',1)">Д4 А+1</button>
+
+            <button onclick="quick('D1','places',1)">Д1 М+1</button>
+            <button onclick="quick('D2','places',1)">Д2 М+1</button>
+            <button onclick="quick('D3','places',1)">Д3 М+1</button>
+            <button onclick="quick('D4','places',1)">Д4 М+1</button>
+        </div>
+
+        <h3>Финальная проверка</h3>
+
+        <select id="truthCriminal">
+            <option>Жанна</option>
+            <option>Игорь</option>
+            <option>Марина</option>
+            <option>Олег</option>
+        </select>
+
+        <select id="truthPlace">
+            <option>Архив</option>
+            <option>Серверная</option>
+            <option>Кабинет директора</option>
+            <option>Паркинг</option>
+        </select>
+
+        <select id="truthAction">
+            <option>Флешка</option>
+            <option>Подмена карты</option>
+            <option>Взлом терминала</option>
+            <option>Передача через курьера</option>
+        </select>
+
+        <button class="secret" onclick="showTruth()">ОТКРЫТЬ ПРАВДУ</button>
+
+        <h3>Заявка игрока</h3>
+        <select id="claimPlayer">
+            <option value="D1">Д1</option>
+            <option value="D2">Д2</option>
+            <option value="D3">Д3</option>
+            <option value="D4">Д4</option>
+        </select>
+
+        <input id="claimCriminal" placeholder="Преступник">
+        <input id="claimPlace" placeholder="Место">
+        <input id="claimAction" placeholder="Действие / орудие">
+
+        <button onclick="checkClaim()">ПРОВЕРИТЬ ЗАЯВКУ</button>
+    </section>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCrr6tMK94-eKuM-0m7RstlarvC-zWO6HE",
+  authDomain: "mydetectivegame.firebaseapp.com",
+  databaseURL: "https://mydetectivegame-default-rtdb.firebaseio.com/"
+  projectId: "mydetectivegame",
+  storageBucket: "mydetectivegame.firebasestorage.app",
+  messagingSenderId: "1086382857326",
+  appId: "1:1086382857326:web:854efdc2e297b4a3805a7f",
+  measurementId: "G-4RWQMWR22R"
+};
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const gameRef = db.ref("detectiveGame");
+
+const ADMIN_MODE =
+    new URLSearchParams(location.search).get("mode") === "admin";
+
+if (ADMIN_MODE) {
+    document.getElementById("adminPanel").classList.remove("hidden");
+}
+
+const names = {
+    D1:"Детектив Ирина",
+    D2:"Детектив Дмитрий",
+    D3:"Детектив Бабушка",
+    D4:"Детектив Демид"
+};
+
+let state = {
+    started:false,
+    stopped:false,
+    elapsed:0,
+    currentTurn:"D1",
+    message:"СИСТЕМА ГОТОВА К ЗАПУСКУ",
+    messageType:"",
+    players:{
+        D1:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+        D2:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+        D3:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+        D4:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true}
+    },
+    log:[]
+};
+
+function save(){
+    if(ADMIN_MODE) gameRef.set(state);
+}
+
+function render(){
+    document.getElementById("message").textContent = state.message;
+    document.getElementById("message").className =
+        "message " + (state.messageType || "");
+
+    const timer = document.getElementById("timer");
+    const min = Math.floor(state.elapsed / 60);
+    const sec = state.elapsed % 60;
+    timer.textContent =
+        String(min).padStart(2,"0") + ":" + String(sec).padStart(2,"0");
+
+    if(state.elapsed >= 2100) timer.classList.add("warning");
+    else timer.classList.remove("warning");
+
+    const box = document.getElementById("players");
+    box.innerHTML = "";
+
+    for(const id of ["D1","D2","D3","D4"]){
+        const p = state.players[id];
+
+        box.innerHTML += `
+        <div class="player
+            ${state.currentTurn === id ? "active" : ""}
+            ${!p.active ? "out" : ""}">
+            <div class="name">${names[id]}</div>
+            <div class="stat">Улики <b class="number">${p.clues}</b></div>
+            <div class="stat">Подозреваемые <b class="number">${p.suspects}</b></div>
+            <div class="stat">Алиби <b class="number">${p.alibi}</b></div>
+            <div class="stat">Места <b class="number">${p.places}</b></div>
+            <div class="stat">Попытки <b class="number">${p.attempts}</b></div>
+        </div>`;
+    }
+
+    document.getElementById("log").innerHTML =
+        state.log.slice(-8).reverse().map(x=>`<div>${x}</div>`).join("");
+}
+
+gameRef.on("value", snap=>{
+    if(snap.exists()){
+        state = snap.val();
+        render();
+    }
+});
+
+function addLog(text){
+    const now = new Date().toLocaleTimeString("ru-RU",
+        {minute:"2-digit",second:"2-digit"});
+    state.log = state.log || [];
+    state.log.push(`[${now}] ${text}`);
+}
+
+function newGame(){
+    if(!confirm("Начать новую игру? Вся статистика будет сброшена.")) return;
+
+    state = {
+        started:false,
+        stopped:false,
+        elapsed:0,
+        currentTurn:"D1",
+        message:"НОВАЯ ИГРА СОЗДАНА",
+        messageType:"",
+        players:{
+            D1:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+            D2:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+            D3:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true},
+            D4:{clues:0,suspects:0,alibi:0,places:0,attempts:2,active:true}
+        },
+        log:[]
+    };
+
+    save();
+    render();
+}
+
+function startTimer(){
+    state.started = true;
+    state.stopped = false;
+    state.message = "РАССЛЕДОВАНИЕ НАЧАТО";
+    addLog("Расследование начато");
+    save();
+}
+
+function stopTimer(){
+    state.stopped = true;
+    state.message = "РАССЛЕДОВАНИЕ ОСТАНОВЛЕНО";
+    addLog("Таймер остановлен");
+    save();
+}
+
+setInterval(()=>{
+    if(ADMIN_MODE && state.started && !state.stopped){
+        state.elapsed++;
+        save();
+    }
+},1000);
+
+function quick(id, type, amount){
+    if(!state.players[id].active) return;
+
+    state.players[id][type] =
+        Math.max(0,state.players[id][type] + amount);
+
+    const labels = {
+        clues:"улика",
+        suspects:"подозреваемый",
+        alibi:"алиби",
+        places:"место"
+    };
+
+    state.message =
+        `${names[id].toUpperCase()}: ${labels[type].toUpperCase()} +${amount}`;
+
+    addLog(`${id} получил ${labels[type]} (+${amount})`);
+    save();
+}
+
+function setTurn(id){
+    state.currentTurn = id;
+    state.message = `ТЕКУЩИЙ ХОД: ${names[id].toUpperCase()}`;
+    addLog(`Ход перешёл к ${id}`);
+    save();
+}
+
+function setTurnPrompt(){
+    const id = prompt("Введите Д1, Д2, Д3 или Д4:");
+    if(["D1","D2","D3","D4"].includes(id)) setTurn(id);
+}
+
+function runCommand(){
+    const text = document.getElementById("command").value
+        .trim().toUpperCase();
+
+    // Команда ХД2 — передать ход
+    let turn = text.match(/^ХД([1-4])$/);
+    if(turn){
+        setTurn("D" + turn[1]);
+        return;
+    }
+
+    // Команда Д2 У+1, Д3 П+1, Д1 А+1, Д4 М+1
+    let match = text.match(/^Д([1-4])\s+(У|П|А|М)([+-])(\d+)$/);
+
+    if(!match){
+        alert("Пример: Д2 У+1 или ХД3");
+        return;
+    }
+
+    const id = "D" + match[1];
+    const symbol = match[2];
+    const sign = match[3] === "+" ? 1 : -1;
+    const amount = Number(match[4]) * sign;
+
+    const type = {
+        У:"clues",
+        П:"suspects",
+        А:"alibi",
+        М:"places"
+    }[symbol];
+
+    quick(id,type,amount);
+    document.getElementById("command").value = "";
+}
+
+function showTruth(){
+    const c = document.getElementById("truthCriminal").value;
+    const p = document.getElementById("truthPlace").value;
+    const a = document.getElementById("truthAction").value;
+
+    state.message = `ПРАВДА: ${c} • ${p} • ${a}`;
+    state.messageType = "win";
+    addLog("Ведущий открыл финальную правду");
+    save();
+}
+
+function checkClaim(){
+    const id = document.getElementById("claimPlayer").value;
+    const p = state.players[id];
+
+    if(!p.active) return;
+
+    if(p.clues < 2){
+        alert("Для финальной заявки нужно минимум 2 улики.");
+        return;
+    }
+
+    const correct =
+        document.getElementById("claimCriminal").value.trim().toLowerCase()
+        === document.getElementById("truthCriminal").value.trim().toLowerCase()
+        &&
+        document.getElementById("claimPlace").value.trim().toLowerCase()
+        === document.getElementById("truthPlace").value.trim().toLowerCase()
+        &&
+        document.getElementById("claimAction").value.trim().toLowerCase()
+        === document.getElementById("truthAction").value.trim().toLowerCase();
+
+    p.attempts--;
+    state.finalClaims = (state.finalClaims || 0) + 1;
+
+    if(correct){
+        state.stopped = true;
+        state.message = `ПОБЕДА! ${names[id].toUpperCase()} РАСКРЫЛ ДЕЛО`;
+        state.messageType = "win";
+        addLog(`${id} правильно раскрыл дело`);
+    }else{
+        p.clues = Math.max(0,p.clues - 1);
+
+        if(p.attempts <= 0){
+            p.active = false;
+            state.message = `${names[id].toUpperCase()} ОТСТРАНЁН`;
+            state.messageType = "lose";
+            addLog(`${id} выбыл после двух ошибок`);
+        }else{
+            state.message = `ОШИБКА: ${names[id].toUpperCase()} ТЕРЯЕТ УЛИКУ`;
+            state.messageType = "lose";
+            addLog(`${id} ошибся в финальной заявке`);
+        }
+    }
+
+    save();
+}
+</script>
+</body>
+</html>
